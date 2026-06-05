@@ -1,0 +1,1830 @@
+openapi: "3.0.3"
+info:
+  title: ERP Supplier Management API
+  description: Production-ready Supplier Management backend for ERP system.
+  version: "1.0.0"
+
+servers:
+  - url: /
+
+tags:
+  - name: "Auth"
+    description: Authentication & Authorization
+  - name: "Supplier: Management"
+    description: Supplier CRUD & Lifecycle
+  - name: "Supplier: Addresses"
+    description: Supplier Address Tab
+  - name: "Supplier: Contacts"
+    description: Supplier Contacts Tab
+  - name: "Supplier: Groups"
+    description: Supplier Groups Tab
+  - name: "Supplier: Materials"
+    description: Material Catalog Tab
+  - name: "Supplier: Ratings"
+    description: Performance Ratings
+  - name: "Supplier: Stage"
+    description: Stage Workflow
+
+# ═══════════════════════════════════════════════════════════════
+# COMPONENTS
+# ═══════════════════════════════════════════════════════════════
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # ─────────────────────────────────────────
+  # Reusable Parameters
+  # ─────────────────────────────────────────
+  parameters:
+    Authorization:
+      name: Authorization
+      in: header
+      required: true
+      schema:
+        type: string
+        example: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+        default: "id"
+        enum: [id, en]
+
+    SupplierID:
+      name: supplierID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    AddressID:
+      name: addressID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    ContactID:
+      name: contactID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    GroupID:
+      name: groupID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+    Search:
+      name: search
+      in: query
+      required: false
+      schema:
+        type: string
+
+    StatusFilter:
+      name: status
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/SupplierStatus"
+
+  # ─────────────────────────────────────────
+  # Reusable Responses
+  # ─────────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NoContent:
+      description: Success - no content
+
+  # ─────────────────────────────────────────
+  # Schemas
+  # ─────────────────────────────────────────
+  schemas:
+
+    # ── Primitives ────────────────────────
+    SupplierStatus:
+      type: string
+      enum: [draft, active, in_progress, blocked, inactive]
+
+    SupplierStage:
+      type: string
+      enum: [draft, in_review, in_assessment, active]
+
+    UserRole:
+      type: string
+      enum: [admin, manager, viewer, supplier]
+
+    # ── Generic ───────────────────────────
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        message_id:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+
+    Meta:
+      type: object
+      required: [page, limit, total, total_pages]
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+          format: int64
+        total_pages:
+          type: integer
+
+    MessageResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+
+    # ── Auth ──────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 2
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        role:
+          $ref: "#/components/schemas/UserRole"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    UserPayload:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        roles:
+          type: array
+          items:
+            type: string
+        permissions:
+          type: array
+          items:
+            type: string
+
+    AuthData:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserPayload"
+
+    AuthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AuthData"
+
+    ProfileResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            email:
+              type: string
+            roles:
+              type: array
+              items:
+                type: string
+
+    # ── Supplier Stats ─────────────────────
+    SupplierStats:
+      type: object
+      properties:
+        total_supplier:
+          type: integer
+          format: int64
+          example: 1869
+        new_supplier:
+          type: integer
+          format: int64
+          example: 27
+        avg_cost_supplier:
+          type: number
+          format: double
+          example: 320300000
+        blocked_supplier:
+          type: integer
+          format: int64
+          example: 31
+
+    SupplierStatsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/SupplierStats"
+
+    # ── Supplier List ──────────────────────
+    SupplierListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          example: "STRM"
+        supplier_no:
+          type: string
+          example: "61000012"
+        name:
+          type: string
+          example: "PT Setroom Indonesia"
+        alias:
+          type: string
+          example: "Setroom"
+        address:
+          type: string
+          example: "Jakarta, Indonesia"
+        contact:
+          type: string
+          example: "Albert Einstein"
+        status:
+          $ref: "#/components/schemas/SupplierStatus"
+
+    SupplierListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupplierListItem"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    # ── Supplier Detail ────────────────────
+    SupplierDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        supplier_no:
+          type: string
+        name:
+          type: string
+        alias:
+          type: string
+        logo_url:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        website:
+          type: string
+        status:
+          $ref: "#/components/schemas/SupplierStatus"
+        stage:
+          $ref: "#/components/schemas/SupplierStage"
+        sla_hours:
+          type: integer
+          example: 72
+        is_blocked:
+          type: boolean
+        block_reason:
+          type: string
+        notes:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressItem"
+        contacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContactItem"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupItem"
+        materials:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaterialItem"
+        stage_histories:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageHistoryItem"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SupplierDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/SupplierDetail"
+
+    # ── Address ────────────────────────────
+    AddressItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Head Office"
+        address:
+          type: string
+          example: "Fatmawati Raya St, 123"
+        city:
+          type: string
+        province:
+          type: string
+        country:
+          type: string
+        postal_code:
+          type: string
+        is_main:
+          type: boolean
+          example: true
+
+    AddressRequest:
+      type: object
+      required: [name, address]
+      properties:
+        name:
+          type: string
+          example: "Head Office"
+        address:
+          type: string
+          example: "Fatmawati Raya St, 123"
+        city:
+          type: string
+        province:
+          type: string
+        country:
+          type: string
+          default: "Indonesia"
+        postal_code:
+          type: string
+        is_main:
+          type: boolean
+          default: false
+
+    AddressResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/AddressItem"
+
+    AddressListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressItem"
+
+    # ── Contact ────────────────────────────
+    ContactItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Albert Einstein"
+        position:
+          type: string
+          example: "CEO"
+        phone:
+          type: string
+          example: "021.123456"
+        mobile:
+          type: string
+          example: "0811234567"
+        email:
+          type: string
+          format: email
+        is_primary:
+          type: boolean
+
+    ContactRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        position:
+          type: string
+        phone:
+          type: string
+        mobile:
+          type: string
+        email:
+          type: string
+          format: email
+        is_primary:
+          type: boolean
+          default: false
+
+    ContactResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ContactItem"
+
+    ContactListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContactItem"
+
+    # ── Group ──────────────────────────────
+    GroupItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        group_name:
+          type: string
+          example: "Industry"
+        value:
+          type: string
+          example: "Manufacture"
+        is_active:
+          type: boolean
+
+    GroupRequest:
+      type: object
+      required: [group_name, value]
+      properties:
+        group_name:
+          type: string
+          example: "Industry"
+        value:
+          type: string
+          example: "Manufacture"
+        is_active:
+          type: boolean
+          default: true
+
+    GroupResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/GroupItem"
+
+    GroupListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupItem"
+
+    # ── Material ───────────────────────────
+    MaterialItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        material_group:
+          type: string
+          example: "IT - Device"
+        material_id:
+          type: string
+          example: "Computer / Notebook"
+        is_active:
+          type: boolean
+
+    MaterialRequest:
+      type: object
+      required: [material_group, material_id]
+      properties:
+        material_group:
+          type: string
+          example: "IT - Device"
+        material_id:
+          type: string
+          example: "Computer / Notebook"
+        is_active:
+          type: boolean
+          default: true
+
+    MaterialListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaterialItem"
+
+    UpdateMaterialsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+
+    # ── Outstanding Invoices ──────────────────
+    InvoiceStatus:
+      type: string
+      enum: [unpaid, partial, paid, overdue]
+
+    InvoiceItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoice_number:
+          type: string
+          example: "INV1234"
+        project_name:
+          type: string
+          example: "Project ABC"
+        amount:
+          type: number
+          format: double
+          example: 123000000
+        currency:
+          type: string
+          example: "IDR"
+        invoice_date:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date-time
+        aging_days:
+          type: integer
+          example: 34
+        status:
+          $ref: "#/components/schemas/InvoiceStatus"
+        paid_amount:
+          type: number
+          format: double
+          example: 0
+
+    OutstandingListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+        meta:
+          $ref: "#/components/schemas/Meta"
+
+    # ── Performance Rating ─────────────────
+    RatingItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        price_rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 3
+        delivery_rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+        notes:
+          type: string
+        reviewed_by:
+          type: string
+          example: "User Legal"
+        reviewed_at:
+          type: string
+          format: date-time
+
+    RatingRequest:
+      type: object
+      required: [price_rating, delivery_rating]
+      properties:
+        price_rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        delivery_rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        notes:
+          type: string
+        reviewed_by:
+          type: string
+
+    RatingListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RatingItem"
+
+    AddRatingResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+
+    # ── Stage History ──────────────────────
+    StageHistoryItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        from_stage:
+          $ref: "#/components/schemas/SupplierStage"
+        to_stage:
+          $ref: "#/components/schemas/SupplierStage"
+        notes:
+          type: string
+        changed_by:
+          type: string
+        elapsed_ms:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+
+    StageHistoryListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageHistoryItem"
+
+    # ── Supplier Requests ──────────────────
+    CreateSupplierRequest:
+      type: object
+      required: [name, code]
+      properties:
+        name:
+          type: string
+          example: "PT Setroom Indonesia"
+        code:
+          type: string
+          maxLength: 10
+          example: "STRM"
+        alias:
+          type: string
+          example: "Setroom"
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+          default: "Indonesia"
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        website:
+          type: string
+        notes:
+          type: string
+
+    UpdateSupplierRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        alias:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        country:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        website:
+          type: string
+        notes:
+          type: string
+
+    BlockSupplierRequest:
+      type: object
+      required: [block]
+      properties:
+        block:
+          type: boolean
+        reason:
+          type: string
+          example: "Payment default"
+
+    BlockSupplierResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            blocked:
+              type: boolean
+
+    AdvanceStageRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+          example: "All documents verified"
+
+# ═══════════════════════════════════════════════════════════════
+# PATHS
+# ═══════════════════════════════════════════════════════════════
+paths:
+
+  # ─────────────────────────────────────────
+  # AUTH
+  # ─────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: ["Auth"]
+      summary: Register new user
+      operationId: RegisterUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/login:
+    post:
+      tags: ["Auth"]
+      summary: Login and get JWT token
+      operationId: LoginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /auth/me:
+    get:
+      tags: ["Auth"]
+      summary: Get current user profile
+      operationId: GetProfile
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # SUPPLIER STATS
+  # ─────────────────────────────────────────
+  /suppliers/stats:
+    get:
+      tags: ["Supplier: Management"]
+      summary: Get supplier dashboard statistics (Total, New, Avg Cost, Blocked)
+      operationId: GetSupplierStats
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Stats retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierStatsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # SUPPLIER LIST & CREATE
+  # ─────────────────────────────────────────
+  /suppliers:
+    get:
+      tags: ["Supplier: Management"]
+      summary: List suppliers with pagination and filters
+      operationId: ListSuppliers
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/StatusFilter"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Supplier list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: ["Supplier: Management"]
+      summary: Create new supplier (from New Supplier modal)
+      operationId: CreateSupplier
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierRequest"
+      responses:
+        "201":
+          description: Supplier created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # SUPPLIER DETAIL, UPDATE, DELETE
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}:
+    parameters:
+      - $ref: "#/components/parameters/SupplierID"
+      - $ref: "#/components/parameters/AcceptLanguage"
+
+    get:
+      tags: ["Supplier: Management"]
+      summary: Get supplier detail (Overview tab)
+      operationId: GetSupplier
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Supplier detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    put:
+      tags: ["Supplier: Management"]
+      summary: Update supplier basic info
+      operationId: UpdateSupplier
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSupplierRequest"
+      responses:
+        "200":
+          description: Supplier updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: ["Supplier: Management"]
+      summary: Soft delete supplier
+      operationId: DeleteSupplier
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # BLOCK / UNBLOCK (Block/Unblock button)
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/block:
+    post:
+      tags: ["Supplier: Management"]
+      summary: Block or unblock a supplier
+      operationId: BlockSupplier
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockSupplierRequest"
+      responses:
+        "200":
+          description: Block status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockSupplierResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # STAGE WORKFLOW (Next Stage button)
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/next-stage:
+    post:
+      tags: ["Supplier: Stage"]
+      summary: Advance supplier to next workflow stage (Draft→Review→Assessment→Active)
+      operationId: AdvanceSupplierStage
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdvanceStageRequest"
+      responses:
+        "200":
+          description: Stage advanced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierDetailResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /suppliers/{supplierID}/stage-history:
+    get:
+      tags: ["Supplier: Stage"]
+      summary: Get stage transition history
+      operationId: GetStageHistory
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Stage history list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StageHistoryListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # ADDRESS TAB (multiple addresses)
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/addresses:
+    get:
+      tags: ["Supplier: Addresses"]
+      summary: Get all addresses for a supplier (Address tab)
+      operationId: GetSupplierAddresses
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Address list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: ["Supplier: Addresses"]
+      summary: Add address to supplier
+      operationId: AddSupplierAddress
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressRequest"
+      responses:
+        "201":
+          description: Address added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /suppliers/{supplierID}/addresses/{addressID}:
+    parameters:
+      - $ref: "#/components/parameters/SupplierID"
+      - $ref: "#/components/parameters/AddressID"
+      - $ref: "#/components/parameters/AcceptLanguage"
+
+    put:
+      tags: ["Supplier: Addresses"]
+      summary: Update a supplier address
+      operationId: UpdateSupplierAddress
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddressRequest"
+      responses:
+        "200":
+          description: Address updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: ["Supplier: Addresses"]
+      summary: Delete a supplier address
+      operationId: DeleteSupplierAddress
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /suppliers/{supplierID}/addresses/{addressID}/set-main:
+    post:
+      tags: ["Supplier: Addresses"]
+      summary: Set an address as main (radio button)
+      operationId: SetMainSupplierAddress
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/AddressID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Main address updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # CONTACTS TAB
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/contacts:
+    get:
+      tags: ["Supplier: Contacts"]
+      summary: Get all contacts for a supplier (Contacts tab)
+      operationId: GetSupplierContacts
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Contact list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: ["Supplier: Contacts"]
+      summary: Add contact to supplier
+      operationId: AddSupplierContact
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRequest"
+      responses:
+        "201":
+          description: Contact added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /suppliers/{supplierID}/contacts/{contactID}:
+    parameters:
+      - $ref: "#/components/parameters/SupplierID"
+      - $ref: "#/components/parameters/ContactID"
+      - $ref: "#/components/parameters/AcceptLanguage"
+
+    put:
+      tags: ["Supplier: Contacts"]
+      summary: Update a supplier contact
+      operationId: UpdateSupplierContact
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRequest"
+      responses:
+        "200":
+          description: Contact updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: ["Supplier: Contacts"]
+      summary: Delete a supplier contact
+      operationId: DeleteSupplierContact
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /suppliers/{supplierID}/contacts/{contactID}/set-primary:
+    post:
+      tags: ["Supplier: Contacts"]
+      summary: Set a contact as primary (Main radio button)
+      operationId: SetPrimarySupplierContact
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/ContactID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Primary contact updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # GROUPS TAB
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/groups:
+    get:
+      tags: ["Supplier: Groups"]
+      summary: Get all groups for a supplier (Groups tab)
+      operationId: GetSupplierGroups
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Group list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: ["Supplier: Groups"]
+      summary: Add group classification to supplier
+      operationId: AddSupplierGroup
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupRequest"
+      responses:
+        "201":
+          description: Group added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /suppliers/{supplierID}/groups/{groupID}:
+    parameters:
+      - $ref: "#/components/parameters/SupplierID"
+      - $ref: "#/components/parameters/GroupID"
+      - $ref: "#/components/parameters/AcceptLanguage"
+
+    put:
+      tags: ["Supplier: Groups"]
+      summary: Update a supplier group
+      operationId: UpdateSupplierGroup
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupRequest"
+      responses:
+        "200":
+          description: Group updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    delete:
+      tags: ["Supplier: Groups"]
+      summary: Delete a supplier group
+      operationId: DeleteSupplierGroup
+      parameters:
+        - $ref: "#/components/parameters/Authorization"
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          $ref: "#/components/responses/NoContent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # MATERIAL CATALOG TAB
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/materials:
+    get:
+      tags: ["Supplier: Materials"]
+      summary: Get material catalog for a supplier (Material List tab)
+      operationId: GetSupplierMaterials
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Material list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    put:
+      tags: ["Supplier: Materials"]
+      summary: Replace entire material list (Edit/Save button)
+      operationId: UpdateSupplierMaterials
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/MaterialRequest"
+      responses:
+        "200":
+          description: Materials updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateMaterialsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # OUTSTANDINGS (Unpaid Invoices)
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/outstandings:
+    get:
+      tags: ["Supplier: Management"]
+      summary: Get outstanding (unpaid/partial/overdue) invoices for a supplier
+      operationId: GetSupplierOutstandings
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Outstanding invoice list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutstandingListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  # ─────────────────────────────────────────
+  # PERFORMANCE RATINGS
+  # ─────────────────────────────────────────
+  /suppliers/{supplierID}/ratings:
+    get:
+      tags: ["Supplier: Ratings"]
+      summary: Get performance ratings for a supplier
+      operationId: GetSupplierRatings
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Rating list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatingListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    post:
+      tags: ["Supplier: Ratings"]
+      summary: Add performance rating for a supplier
+      operationId: AddSupplierRating
+      parameters:
+        - $ref: "#/components/parameters/SupplierID"
+        - $ref: "#/components/parameters/Authorization"
+        - $ref: "#/components/parameters/AcceptLanguage"
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RatingRequest"
+      responses:
+        "201":
+          description: Rating added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddRatingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"

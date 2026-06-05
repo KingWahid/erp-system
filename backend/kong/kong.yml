@@ -1,0 +1,59 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: erp-supplier-service
+    url: http://erp-app:8080
+    connect_timeout: 10000
+    write_timeout: 30000
+    read_timeout: 30000
+
+    routes:
+      - name: erp-api-route
+        paths:
+          - /
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+
+    plugins:
+      # Rate limiting
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
+
+      # CORS
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - OPTIONS
+          headers:
+            - Authorization
+            - Content-Type
+            - X-Request-ID
+          max_age: 3600
+
+      # Request size limit
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 10
+
+      # Response transformer - add API version header
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-API-Version: v1"
+              - "X-Service: erp-supplier-management"

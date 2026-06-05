@@ -1,0 +1,8 @@
+package: generated
+generate:
+  models: false
+  echo-server: true
+  strict-server: false
+  client: false
+  embedded-spec: true
+output: ../internal/generated/server.gen.go
