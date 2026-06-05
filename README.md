@@ -821,4 +821,3 @@ npm run dev
 
 ---
 
-*Dokumentasi ini di-generate berdasarkan source code aktual project. Untuk update OpenAPI spec, jalankan `make generate` di folder `backend`.*
